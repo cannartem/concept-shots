@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MCP server (stdio) for ConceptShots: lets Claude take phone and desktop screenshots of a site and its concept.
+"""MCP server (stdio) for ConceptShots: lets Claude take screenshots of a page on desktop and on phone, plus custom sizes.
 
 Only the Python standard library is used. Each tool call runs the `shots` binary from ConceptShots.app.
 """
@@ -16,8 +16,9 @@ TOOLS = [
     {
         "name": "capture_lead_screens",
         "description": (
-            "Take 4 screenshots: the current site and the new design, each on phone (750x1624) and desktop (800x500). "
-            "Saves <slug>_{old,new}_{phone,desktop}.jpg into out_dir (default: CONCEPTSHOTS_DIR or ~/Pictures/ConceptShots). "
+            "One call, a set of screenshots of a page: desktop (saved 800x500), phone (saved 750x1624) and any custom sizes. "
+            "Saves <name>_desktop.jpg, <name>_phone.jpg and <name>_<W>x<H>.jpg into out_dir (default: CONCEPTSHOTS_DIR or ~/Pictures/ConceptShots). "
+            "With old_url the same set is taken for a second page too, named <name>_old_* and <name>_new_* (before and after). "
             "The page is scrolled through first so scroll-revealed content appears, then the first screen is captured. "
             "Refuses to replace existing files unless overwrite is true. With pick=true a window opens for the person at the "
             "computer, who scrolls to each frame and presses Enter."
@@ -25,9 +26,10 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "concept_url": {"type": "string", "description": "URL of the new design"},
-                "old_url": {"type": "string", "description": "URL of the current site; omit if there is none"},
-                "slug": {"type": "string", "description": "File name prefix; taken from the last part of the new design URL if omitted"},
+                "concept_url": {"type": "string", "description": "URL of the page to capture"},
+                "old_url": {"type": "string", "description": "Optional second page captured the same way, for example the current site"},
+                "sizes": {"type": "array", "items": {"type": "string"}, "description": "Extra sizes as WxH in CSS pixels, for example [\"768x1024\", \"1920x1080\"]"},
+                "slug": {"type": "string", "description": "File name prefix; taken from the last part of the URL if omitted"},
                 "out_dir": {"type": "string", "description": "Folder for the files"},
                 "overwrite": {"type": "boolean", "default": False},
                 "pick": {"type": "boolean", "default": False, "description": "Let the person choose each frame by scrolling"},
@@ -42,14 +44,14 @@ TOOLS = [
     {
         "name": "capture_page",
         "description": (
-            "Screenshot one page on phone (375 pt wide, saved 750x1624) or desktop (1440x900, saved 800x500) as JPEG. "
+            "Screenshot one page as JPEG on phone (375 pt wide, saved 750x1624), desktop (1440x900, saved 800x500) or a custom WxH size. "
             "Scrolls through the page, scrolls to scroll_y, waits, then captures the visible screen."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "url": {"type": "string"},
-                "device": {"type": "string", "enum": ["phone", "desktop"]},
+                "device": {"type": "string", "description": "phone, desktop, or a custom size such as 1024x768"},
                 "out_path": {"type": "string", "description": "Where to save the .jpg"},
                 "scroll_y": {"type": "number", "default": 0, "description": "Scroll position in CSS pixels"},
                 "wait_seconds": {"type": "number", "default": 5},
@@ -104,6 +106,8 @@ def call(name, a):
                 "--names", a.get("names", DEFAULT_NAMES)]
         if a.get("old_url"):
             args += ["--old", a["old_url"]]
+        if a.get("sizes"):
+            args += ["--sizes", ",".join(a["sizes"])]
         if a.get("slug"):
             args += ["--slug", a["slug"]]
         if a.get("overwrite"):

@@ -1,28 +1,29 @@
 # ConceptShots
 
-A small Mac app that takes before and after screenshots for you. Give it the link to a new design and the link to the client's current site, and it saves four images: current site and new design, each on a phone and on a desktop.
+A Mac app that takes the screenshots of a web page for you. Paste a link, press one button, and it saves how the page looks on a desktop and on a phone. Need other sizes too? Add them, and they come out in the same run.
 
 Made by [productive.studio](https://productive.studio).
 
 ## Use
 
-1. Open ConceptShots. A window asks for two links: the new design and the current site (leave the second empty if there is none).
-2. Pick the folder where the images go with the "Folder…" button. It is remembered.
-3. Each page opens in phone size, then in desktop size. Scroll to the part you want to show and press Enter. Esc skips a frame.
-4. When all four are done, Finder opens with the files selected.
+1. Open ConceptShots and paste the page link.
+2. Optional: add extra sizes, for example `768x1024, 1920x1080`. They are remembered.
+3. Pick the folder where the images go with the "Folder…" button. It is remembered too.
+4. Press "Take shots". The app scrolls through the page so content that appears on scroll is loaded, waits a few seconds, takes every screenshot and opens Finder with the files selected.
 
-Untick "I scroll to each frame myself" and the app takes the first screen of every page on its own. Before taking the shot it scrolls through the page and waits a few seconds, so content that only appears on scroll is there.
+Want to choose the exact spot yourself? Tick "I scroll to each frame myself". Each size opens in its own window, you scroll to the part you want and press Enter. Esc skips a frame.
 
 ## The files
 
-| File | Contents | Size |
+| File | Contents | Saved size |
 | --- | --- | --- |
-| `name_old_phone.jpg` | current site, phone | 750x1624 |
-| `name_old_desktop.jpg` | current site, desktop | 800x500 |
-| `name_new_phone.jpg` | new design, phone | 750x1624 |
-| `name_new_desktop.jpg` | new design, desktop | 800x500 |
+| `name_desktop.jpg` | desktop, 1440x900 window | 800x500 |
+| `name_phone.jpg` | phone, 375 pt wide window | 750x1624 |
+| `name_768x1024.jpg` | any size you add (width x height) | exactly that |
 
-`name` comes from the last part of the new design link (`example.com/designs/bakery/` gives `bakery`) or from the field in the window. If a file already exists, the app asks before replacing it.
+`name` comes from the last part of the link (`example.com/designs/bakery/` gives `bakery`) or from the field in the window. If a file already exists, the app asks before replacing it.
+
+Want a before and after? Fill the "Second page" field with the current site. Both pages get the same set, named `name_old_desktop.jpg`, `name_new_desktop.jpg` and so on.
 
 The page language that sites see is set in the window and defaults to `en-US`.
 
@@ -39,7 +40,7 @@ The zip also contains `mcp_server.py`. Keep it next to `ConceptShots.app` and ad
 claude mcp add concept-shots -- python3 /full/path/to/mcp_server.py
 ```
 
-After that you can ask Claude to take the four screenshots for a link. Two tools are available: `capture_lead_screens` (all four images) and `capture_page` (one image, with a scroll position). Defaults can be changed with environment variables in the server config: `CONCEPTSHOTS_DIR` (folder), `CONCEPTSHOTS_LANG` (browser language) and `CONCEPTSHOTS_NAMES` (`en`, or `cs` for Czech file names). Python 3 is the only thing it needs.
+After that you can ask Claude to take the screenshots of a link. Two tools are available: `capture_lead_screens` (desktop, phone and any sizes you ask for) and `capture_page` (one image, with a scroll position). Defaults can be changed with environment variables in the server config: `CONCEPTSHOTS_DIR` (folder), `CONCEPTSHOTS_LANG` (browser language) and `CONCEPTSHOTS_NAMES` (`en`, or `cs` for Czech file names). Python 3 is the only thing it needs.
 
 ## Good to know
 

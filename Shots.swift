@@ -1,12 +1,13 @@
 import Cocoa
 import WebKit
 
-// ConceptShots: screenshots of a current site and a new design, on phone and on desktop,
-// saved as <slug>_{old,new}_{phone,desktop}.jpg (--names cs gives <slug>_{stary_web,koncept}_{telefon,pocitac}.jpg).
+// ConceptShots: one press takes screenshots of a page on desktop and on phone, plus any custom sizes.
+// Files: <name>_desktop.jpg, <name>_phone.jpg, <name>_<W>x<H>.jpg. A second page (for example the current site)
+// gives <name>_old_* and <name>_new_*. --names cs uses Czech names (stary_web, koncept, telefon, pocitac).
 //
 //   shots capture --url U --device phone|desktop --out F [--scroll Y] [--wait S] [--lang en-US]
 //   shots pick    --url U --device phone|desktop --out F
-//   shots lead    --concept U [--old U] [--slug S] [--dir D] [--names en|cs] [--lang en-US] [--pick] [--force] [--wait S]
+//   shots lead    --concept U [--old U] [--slug S] [--dir D] [--sizes 768x1024,1920x1080] [--names en|cs] [--lang en-US] [--pick] [--force] [--wait S]
 //   shots                     (no arguments: dialog window)
 //
 // Every capture prints one JSON line to stdout: {"ok":true,"path":...} or {"ok":false,"error":...}.
@@ -20,7 +21,17 @@ struct Device {
         ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1")
     static let desktop = Device(name: "desktop", cs: "pocitac", w: 1440, h: 900, outW: 800, outH: 500, ua: nil)
     static func named(_ s: String) -> Device? {
-        switch s { case "phone", "telefon": return .phone; case "desktop", "pocitac": return .desktop; default: return nil }
+        switch s { case "phone", "telefon": return .phone; case "desktop", "pocitac": return .desktop; default: return custom(s) }
+    }
+    /// "WxH" in CSS pixels, saved at exactly that size
+    static func custom(_ s: String) -> Device? {
+        let p = s.lowercased().split(separator: "x").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard p.count == 2, (200...5000).contains(p[0]), (200...5000).contains(p[1]) else { return nil }
+        let n = "\(p[0])x\(p[1])"
+        return Device(name: n, cs: n, w: CGFloat(p[0]), h: CGFloat(p[1]), outW: p[0], outH: p[1], ua: nil)
+    }
+    static func list(_ s: String?) -> [Device] {
+        (s ?? "").split(whereSeparator: { ", ;".contains($0) }).compactMap { custom(String($0)) }
     }
 }
 
@@ -217,14 +228,18 @@ func slugFrom(_ url: URL) -> String {
 }
 
 func leadJobs(old: URL?, concept: URL, slug: String, dir: String, pick: Bool, wait: Double,
-              lang: String = "en-US", names: String = "en") -> [Job] {
+              lang: String = "en-US", names: String = "en", extra: [Device] = []) -> [Job] {
     var jobs: [Job] = []
     let cs = names == "cs"
-    let pairs: [(URL?, String, String)] = [(old, cs ? "stary_web" : "old", "Current site"), (concept, cs ? "koncept" : "new", "New design")]
+    let pairs: [(URL?, String, String)]
+    if cs { pairs = [(old, "stary_web", "Current site"), (concept, "koncept", "New design")] }
+    else if old != nil { pairs = [(old, "old", "Current site"), (concept, "new", "New design")] }
+    else { pairs = [(concept, "", "Page")] }
     for (u, kind, label) in pairs {
         guard let u = u else { continue }
-        for d in [Device.phone, Device.desktop] {
-            var j = Job(url: u, device: d, out: "\(dir)/\(slug)_\(kind)_\(cs ? d.cs : d.name).jpg")
+        for d in [Device.phone, Device.desktop] + extra {
+            let part = kind.isEmpty ? "" : "_\(kind)"
+            var j = Job(url: u, device: d, out: "\(dir)/\(slug)\(part)_\(cs ? d.cs : d.name).jpg")
             j.pick = pick; j.wait = wait; j.lang = lang; j.label = "\(label), \(d.name)"
             jobs.append(j)
         }
@@ -252,12 +267,12 @@ final class FolderPicker: NSObject {
     }
 }
 
-func askLead() -> (URL?, URL, String, String, Bool, String)? {
+func askLead() -> (URL?, URL, String, String, Bool, String, [Device])? {
     let alert = NSAlert()
     alert.messageText = "ConceptShots"
-    alert.informativeText = "Screenshots of a current site and a new design, on phone and on desktop."
-    let box = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 290))
-    var y: CGFloat = 266
+    alert.informativeText = "One click: your page on desktop and on phone, plus any sizes you add."
+    let box = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 350))
+    var y: CGFloat = 326
     func field(_ label: String, _ value: String) -> NSTextField {
         let l = NSTextField(labelWithString: label)
         l.frame = NSRect(x: 0, y: y, width: 460, height: 16)
@@ -270,10 +285,10 @@ func askLead() -> (URL?, URL, String, String, Bool, String)? {
         return f
     }
     let clip = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    let clipIsURL = clip.hasPrefix("http")
-    let conceptF = field("New design URL", clipIsURL ? clip : "")
-    let oldF = field("Current site URL (leave empty if there is none)", "")
-    let slugF = field("Name for the files (taken from the new design URL if empty)", "")
+    let urlF = field("Page URL", clip.hasPrefix("http") ? clip : "")
+    let sizesF = field("Extra sizes, optional (for example 768x1024, 1920x1080)", UserDefaults.standard.string(forKey: "sizes") ?? "")
+    let slugF = field("Name for the files (taken from the URL if empty)", "")
+    let oldF = field("Second page, optional (for example the current site, for before and after)", "")
     let langF = field("Browser language", UserDefaults.standard.string(forKey: "lang") ?? "en-US")
 
     let folderLabel = NSTextField(labelWithString: defaultDir)
@@ -288,7 +303,7 @@ func askLead() -> (URL?, URL, String, String, Bool, String)? {
     y -= 32
 
     let pick = NSButton(checkboxWithTitle: "I scroll to each frame myself (Enter saves)", target: nil, action: nil)
-    pick.state = .on
+    pick.state = .off
     pick.frame = NSRect(x: 0, y: y, width: 460, height: 22)
     box.addSubview(pick)
     y -= 28
@@ -302,13 +317,15 @@ func askLead() -> (URL?, URL, String, String, Bool, String)? {
     alert.accessoryView = box
     alert.addButton(withTitle: "Take shots")
     alert.addButton(withTitle: "Cancel")
-    alert.window.initialFirstResponder = conceptF
+    alert.window.initialFirstResponder = urlF
     NSApp.activate(ignoringOtherApps: true)
-    guard alert.runModal() == .alertFirstButtonReturn, let concept = normalizedURL(conceptF.stringValue) else { return nil }
+    guard alert.runModal() == .alertFirstButtonReturn, let page = normalizedURL(urlF.stringValue) else { return nil }
     let s = slugF.stringValue.trimmingCharacters(in: .whitespaces)
     let lang = langF.stringValue.trimmingCharacters(in: .whitespaces).isEmpty ? "en-US" : langF.stringValue.trimmingCharacters(in: .whitespaces)
     UserDefaults.standard.set(lang, forKey: "lang")
-    return (normalizedURL(oldF.stringValue), concept, s.isEmpty ? slugFrom(concept) : s, folderLabel.stringValue, pick.state == .on, lang)
+    UserDefaults.standard.set(sizesF.stringValue, forKey: "sizes")
+    return (normalizedURL(oldF.stringValue), page, s.isEmpty ? slugFrom(page) : s, folderLabel.stringValue,
+            pick.state == .on, lang, Device.list(sizesF.stringValue))
 }
 
 func confirmOverwrite(_ files: [String]) -> Bool {
@@ -329,7 +346,7 @@ app.setActivationPolicy((gui || cmd == "pick" || flag("pick", argv)) ? .regular 
 
 var jobs: [Job] = []
 func usage() -> Never {
-    FileHandle.standardError.write("usage: shots capture|pick --url U --device phone|desktop --out F | shots lead --concept U [--old U] [--slug S] [--dir D] [--names en|cs] [--lang en-US] [--pick] [--force]\n".data(using: .utf8)!)
+    FileHandle.standardError.write("usage: shots capture|pick --url U --device phone|desktop --out F | shots lead --concept U [--old U] [--slug S] [--dir D] [--sizes 768x1024,1920x1080] [--names en|cs] [--lang en-US] [--pick] [--force]\n".data(using: .utf8)!)
     exit(64)
 }
 
@@ -349,7 +366,8 @@ case "lead":
     let slug = arg("slug", argv) ?? slugFrom(concept)
     jobs = leadJobs(old: arg("old", argv).flatMap(normalizedURL), concept: concept, slug: slug, dir: dir,
                     pick: flag("pick", argv), wait: Double(arg("wait", argv) ?? "5") ?? 5,
-                    lang: arg("lang", argv) ?? "en-US", names: arg("names", argv) ?? "en")
+                    lang: arg("lang", argv) ?? "en-US", names: arg("names", argv) ?? "en",
+                    extra: Device.list(arg("sizes", argv)))
     let existing = jobs.map(\.out).filter { FileManager.default.fileExists(atPath: $0) }
     if !existing.isEmpty && !flag("force", argv) {
         emit(["ok": false, "error": "files already exist, pass --force to replace", "existing": existing])
@@ -365,8 +383,8 @@ var runner: Runner?
 final class Delegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         if gui {
-            guard let (old, concept, slug, dir, pick, lang) = askLead() else { NSApp.terminate(nil); return }
-            jobs = leadJobs(old: old, concept: concept, slug: slug, dir: dir, pick: pick, wait: 5, lang: lang)
+            guard let (old, concept, slug, dir, pick, lang, extra) = askLead() else { NSApp.terminate(nil); return }
+            jobs = leadJobs(old: old, concept: concept, slug: slug, dir: dir, pick: pick, wait: 5, lang: lang, extra: extra)
             let existing = jobs.map(\.out).filter { FileManager.default.fileExists(atPath: $0) }
             if !existing.isEmpty && !confirmOverwrite(existing) { NSApp.terminate(nil); return }
         }
